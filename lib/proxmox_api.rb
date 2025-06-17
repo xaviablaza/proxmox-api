@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'rest_client'
+require 'faraday'
 require 'json'
 
 # This class is wrapper for Proxmox PVE APIv2.
@@ -46,14 +46,13 @@ class ProxmoxAPI
   # This exception is raised when Proxmox API returns error code
   #
   # @!attribute [r] response
-  #   @return [RestClient::Response] answer from Proxmox server
+  #   @return [Faraday::Response] answer from Proxmox server
   class ApiException < RuntimeError
     attr_reader :response
 
     def initialize(response, description)
       @response = response
-
-      super description
+      super(description)
     end
   end
 
@@ -71,18 +70,15 @@ class ProxmoxAPI
   #
   # @option options [Boolean] :verify_ssl - verify server certificate
   #
-  # You can also pass here all ssl options supported by rest-client gem
-  # @see https://github.com/rest-client/rest-client
+  # You can also pass here all ssl options supported by faraday gem
+  # @see https://github.com/lostisland/faraday
   def initialize(cluster, options)
-    if options.key?(:token) && options.key?(:secret)
+    if use_pve_api_token_auth?(options)
       options[:headers] = { Authorization: "PVEAPIToken=#{options[:token]}=#{options[:secret]}" }
     end
-
-    @connection = RestClient::Resource.new(
-      "https://#{cluster}:#{options[:port] || 8006}/api2/json/",
-      options.select { |k, _v| connection_options.include?(k.to_s) }
-    )
-    @auth_ticket = options.key?(:token) ? {} : create_auth_ticket(options.select { |k, _v| AUTH_PARAMS.include? k })
+    @base_url = build_base_url(cluster, options)
+    @connection = build_faraday_connection(@base_url, options)
+    @auth_ticket = build_auth_ticket(options)
   end
 
   def [](index)
@@ -97,52 +93,89 @@ class ProxmoxAPI
     true
   end
 
-  # The list of options to be passed to RestClient object
+  # The list of options to be passed to Faraday object
   def self.connection_options
-    RestClient::Request::SSLOptionList.unshift('verify_ssl') + RESOURCE_OPTIONS
+    %w[verify_ssl] + RESOURCE_OPTIONS.map(&:to_s)
   end
 
   private
 
+  def build_auth_ticket(options)
+    options.key?(:token) ? {} : create_auth_ticket(options.slice(*auth_params))
+  end
+
+  def build_base_url(cluster, options)
+    "https://#{cluster}:#{options[:port] || 8006}/api2/json/"
+  end
+
+  def use_pve_api_token_auth?(options)
+    options.key?(:token) && options.key?(:secret)
+  end
+
+  def build_faraday_connection(base_url, options)
+    Faraday.new(url: base_url) do |faraday|
+      faraday.request :url_encoded
+      faraday.adapter Faraday.default_adapter
+      faraday.ssl.verify = options[:verify_ssl] if options.key?(:verify_ssl)
+      options[:headers].each { |k, v| faraday.headers[k] = v } if options.key?(:headers)
+    end
+  end
+
   def raise_on_failure(response, message = 'Proxmox API request failed')
-    return unless response.code.to_i >= 400
+    return unless response.status >= 400
 
     raise ApiException.new(response, message)
   end
 
   def create_auth_ticket(options)
-    @connection['access/ticket'].post options do |response, _request, _result, &_block|
-      raise_on_failure(response, 'Proxmox authentication failure')
-
-      data = JSON.parse(response.body, symbolize_names: true)[:data]
-      {
-        cookies: { PVEAuthCookie: data[:ticket] },
-        CSRFPreventionToken: data[:CSRFPreventionToken]
-      }
-    end
+    response = @connection.post('access/ticket', options)
+    raise_on_failure(response, 'Proxmox authentication failure')
+    data = JSON.parse(response.body, symbolize_names: true)[:data]
+    {
+      cookies: { PVEAuthCookie: data[:ticket] },
+      CSRFPreventionToken: data[:CSRFPreventionToken]
+    }
   end
 
-  def prepare_options(method, data)
+  def prepare_request(method, data)
+    headers = {}
+    params = {}
+    body = nil
+    headers['Cookie'] = @auth_ticket[:cookies].map { |k, v| "#{k}=#{v}" }.join('; ') if @auth_ticket[:cookies]
+    headers['CSRFPreventionToken'] = @auth_ticket[:CSRFPreventionToken] if @auth_ticket[:CSRFPreventionToken]
     case method
     when :post, :put
-      [data, @auth_ticket]
-    when :delete
-      [@auth_ticket]
+      body = data
     when :get
-      [@auth_ticket.merge(data)]
+      params = data
     end
+    { headers: headers, params: params, body: body }
   end
 
   def submit(method, url, data = {})
+    method, skip_raise = normalize_method(method)
+    request_options = prepare_request(method, data)
+    response = perform_request(method, url, request_options)
+    raise_on_failure(response) unless skip_raise
+    parse_response(response)
+  end
+
+  def normalize_method(method)
     if /!$/.match? method
-      method = method.to_s.tr('!', '').to_sym
-      skip_raise = true
+      [method.to_s.tr('!', '').to_sym, true]
+    else
+      [method, false]
     end
+  end
 
-    @connection[url].__send__(method, *prepare_options(method, data)) do |response|
-      raise_on_failure(response) unless skip_raise
-
-      JSON.parse(response.body, symbolize_names: true)[:data]
+  def perform_request(method, url, request_options)
+    @connection.public_send(method, url, request_options[:body]) do |req|
+      req.headers.update(request_options[:headers])
+      req.params.update(request_options[:params]) if method == :get
     end
+  end
+
+  def parse_response(response)
+    JSON.parse(response.body, symbolize_names: true)[:data]
   end
 end

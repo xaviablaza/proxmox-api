@@ -35,7 +35,7 @@ describe 'ApiPath' do
     end
 
     it "should send #{method}! to ProxmoxAPI" do
-      expect(@api_object).to receive(:submit).with("#{method}!".to_sym, 'nodes/pve')
+      expect(@api_object).to receive(:submit).with(:"#{method}!", 'nodes/pve')
       ProxmoxAPI::ApiPath.new(@api_object).nodes.pve.__send__("#{method}!")
     end
   end
