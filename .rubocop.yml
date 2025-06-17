@@ -1,9 +1,9 @@
 AllCops:
   NewCops: enable
-  TargetRubyVersion: 2.5
-
+  TargetRubyVersion: 3.0
 Lint/MissingSuper:
   Enabled: false
-
 Style/RegexpLiteral:
   EnforcedStyle: mixed
+Metrics/MethodLength:
+  Max: 20
