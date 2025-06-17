@@ -1,30 +1,22 @@
 # proxmox-api
-[![Build Status](https://travis-ci.com/L-Eugene/proxmox-api.svg?branch=master)](https://app.travis-ci.com/github/L-Eugene/proxmox-api)
 [![Gem Version](https://badge.fury.io/rb/proxmox-api.svg)](https://badge.fury.io/rb/proxmox-api)
 
 ## What is it?
-ProxmoxAPI is Ruby wrapper for [Proxmox REST API](https://pve.proxmox.com/pve-docs/api-viewer/index.html). 
-It simply send your requests to Proxmox REST API server without verifying them. 
+ProxmoxAPI is Ruby wrapper for [Proxmox REST API](https://pve.proxmox.com/pve-docs/api-viewer/index.html). It simply sends your requests to Proxmox REST API server without verifying them.
 
 ## Usage
 
 ### Installation
-
 You can add this gem to your Gemfile and use bundler:
 ```ruby
-gem 'proxmox-api'
+gem 'proxmox-api', git: 'https://github.com/xaviablaza/proxmox-api'
 ```
 
-Or install gem manually:
-```bash
-gem install proxmox
-```
 ### Authorization
 
 Creating connection is as simple as giving all needed info to ProxmoxAPI constructor:
 
-First parameter is node we are going to connect to.
-Second parameter is options hash. Possible options are: 
+First parameter is node we are going to connect to. The second parameter is an options hash. Possible options are: 
 1. Ticket creation options **:username**, **:password**, **:realm**, **:otp**
    (see [/access/ticket](https://pve.proxmox.com/pve-docs/api-viewer/index.html#/access/ticket) request description)
    ```ruby
@@ -35,8 +27,7 @@ Second parameter is options hash. Possible options are:
      username: 'root', password: 'password', realm: 'pam', verify_ssl: false
    )
    ``` 
-    
-1. Token options **:token**, **:secret**
+2. Token options **:token**, **:secret**
    (see [API documentation](https://pve.proxmox.com/wiki/Proxmox_VE_API#API_Tokens) for details)
    ```ruby
    require 'proxmox_api'
@@ -46,20 +37,17 @@ Second parameter is options hash. Possible options are:
      token: 'root@pam!tokenid', secret: 'cdbb8fce-c068-4a9b-ade1-a00043db818a', verify_ssl: false
    )
    ``` 
-
-1. SSL options, supported by [rest-client](https://github.com/rest-client/rest-client).
-   See it's documentation for full list.
+3. ~~SSL options, supported by [rest-client](https://github.com/rest-client/rest-client).
+   See it's documentation for full list.~~
 
 ProxmoxAPI constructor will automatically try to get access ticket with given credentials
 and will raise an exception if this will fail.    
 
 ### Making requests
 
-To build REST API url just chain it to client object. 
-Calling **.get**, **.put**, **.post** or **.delete** will result in sending
-appropriate request to Proxmox node. 
+To build a REST API url, just chain it to the client object. Calling `.get`, `.put`, `.post` or `.delete` will result in sending the appropriate request to the Proxmox node. 
 
-ProxmoxAPI::ApiException will be raised if server will return error status code.
+`ProxmoxAPI::ApiException` will be raised if server will return error status code.
 
 ```ruby
 # Get current status of container with id 101 on pve1 node
@@ -86,5 +74,5 @@ proxmox.access.users['user@pve'].get!.nil?
 
 ## Contributing
 
-Feel free to create [issue](https://github.com/L-Eugene/proxmox-api/issues) 
-or propose [pull request](https://github.com/L-Eugene/proxmox-api/pulls) on [GitHub](https://github.com/L-Eugene/proxmox-api).
+Feel free to create an [issue](https://github.com/L-Eugene/proxmox-api/issues)
+or [pull request](https://github.com/L-Eugene/proxmox-api/pulls) on [GitHub](https://github.com/L-Eugene/proxmox-api).
