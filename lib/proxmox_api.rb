@@ -26,6 +26,10 @@ class ProxmoxAPI
       @path.join('/')
     end
 
+    def to_a
+      @path.dup
+    end
+
     def [](index)
       @path << index.to_s
       self
