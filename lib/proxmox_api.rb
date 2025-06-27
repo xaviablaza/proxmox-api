@@ -104,6 +104,10 @@ class ProxmoxAPI
 
   private
 
+  def auth_params
+    AUTH_PARAMS
+  end
+
   def build_auth_ticket(options)
     options.key?(:token) ? {} : create_auth_ticket(options.slice(*auth_params))
   end
