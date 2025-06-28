@@ -122,7 +122,6 @@ class ProxmoxAPI
 
   def build_faraday_connection(base_url, options)
     Faraday.new(url: base_url) do |faraday|
-      faraday.request :url_encoded
       faraday.adapter Faraday.default_adapter
       faraday.ssl.verify = options[:verify_ssl] if options.key?(:verify_ssl)
       options[:headers].each { |k, v| faraday.headers[k] = v } if options.key?(:headers)
@@ -153,7 +152,8 @@ class ProxmoxAPI
     headers['CSRFPreventionToken'] = @auth_ticket[:CSRFPreventionToken] if @auth_ticket[:CSRFPreventionToken]
     case method
     when :post, :put
-      body = data
+      body = data.to_json
+      headers['Content-Type'] = 'application/json'
     when :get
       params = data
     end
