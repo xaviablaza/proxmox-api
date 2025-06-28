@@ -122,6 +122,7 @@ class ProxmoxAPI
 
   def build_faraday_connection(base_url, options)
     Faraday.new(url: base_url) do |faraday|
+      faraday.request options[:faraday_request].presence || :url_encoded
       faraday.adapter Faraday.default_adapter
       faraday.ssl.verify = options[:verify_ssl] if options.key?(:verify_ssl)
       options[:headers].each { |k, v| faraday.headers[k] = v } if options.key?(:headers)
