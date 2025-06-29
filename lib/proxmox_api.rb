@@ -113,7 +113,8 @@ class ProxmoxAPI
   end
 
   def build_base_url(cluster, options)
-    "https://#{cluster}:#{options[:port] || 8006}/api2/json/"
+    protocol = options[:verify_ssl] == false ? 'http' : 'https'
+    "#{protocol}://#{cluster}:#{options[:port] || 8006}/api2/json/"
   end
 
   def use_pve_api_token_auth?(options)
