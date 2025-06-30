@@ -99,7 +99,7 @@ class ProxmoxAPI
 
   # The list of options to be passed to Faraday object
   def self.connection_options
-    %w[verify_ssl] + RESOURCE_OPTIONS.map(&:to_s)
+    %w[verify_ssl ca_file ca_path] + RESOURCE_OPTIONS.map(&:to_s)
   end
 
   private
@@ -124,9 +124,21 @@ class ProxmoxAPI
     Faraday.new(url: base_url) do |faraday|
       faraday.request options[:faraday_request].presence || :url_encoded
       faraday.adapter Faraday.default_adapter
-      faraday.ssl.verify = options[:verify_ssl] if options.key?(:verify_ssl)
-      options[:headers].each { |k, v| faraday.headers[k] = v } if options.key?(:headers)
+      configure_ssl(faraday, options)
+      configure_headers(faraday, options)
     end
+  end
+
+  def configure_ssl(faraday, options)
+    faraday.ssl.verify = options[:verify_ssl] if options.key?(:verify_ssl)
+    faraday.ssl.ca_file = options[:ca_file] if options.key?(:ca_file)
+    faraday.ssl.ca_path = options[:ca_path] if options.key?(:ca_path)
+  end
+
+  def configure_headers(faraday, options)
+    return unless options.key?(:headers)
+
+    options[:headers].each { |k, v| faraday.headers[k] = v }
   end
 
   def raise_on_failure(response, message = 'Proxmox API request failed')
