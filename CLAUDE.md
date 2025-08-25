@@ -38,9 +38,10 @@ This is a Ruby gem that provides a wrapper for the Proxmox VE REST API. The gem 
 ### HTTP Client Migration
 
 The gem has been migrated from RestClient to Faraday:
-- Connection setup uses Faraday with url_encoded requests
-- SSL verification handled through Faraday's SSL configuration
+- Connection setup uses Faraday with url_encoded requests (configurable via `:faraday_request` option)
+- SSL verification handled through Faraday's SSL configuration (supports `:verify_ssl`, `:ca_file`, `:ca_path`)
 - Request/response handling abstracted through helper methods for better maintainability
+- Custom port support via `:port` option (defaults to 8006)
 
 ### Authentication Methods
 
