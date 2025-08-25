@@ -122,7 +122,8 @@ class ProxmoxAPI
 
   def build_faraday_connection(base_url, options)
     Faraday.new(url: base_url) do |faraday|
-      faraday.request options[:faraday_request].presence || :url_encoded
+      request_format = options[:faraday_request]
+      faraday.request(request_format && !request_format.empty? ? request_format : :url_encoded)
       faraday.adapter Faraday.default_adapter
       configure_ssl(faraday, options)
       configure_headers(faraday, options)
@@ -144,7 +145,54 @@ class ProxmoxAPI
   def raise_on_failure(response, message = 'Proxmox API request failed')
     return unless response.status >= 400
 
-    raise ApiException.new(response, message)
+    error_message = extract_error_message(response, message)
+    raise ApiException.new(response, error_message)
+  end
+
+  def extract_error_message(response, default_message)
+    return default_message if empty_response?(response)
+
+    proxmox_error = parse_proxmox_error(response)
+    return build_fallback_message(response, default_message) if proxmox_error.nil?
+
+    build_error_message(response, proxmox_error, default_message)
+  rescue JSON::ParserError
+    "#{default_message} (HTTP #{response.status})"
+  end
+
+  def empty_response?(response)
+    response.body.nil? || response.body.empty?
+  end
+
+  def parse_proxmox_error(response)
+    parsed_response = JSON.parse(response.body, symbolize_names: true)
+    {
+      message: parsed_response[:message],
+      errors: parsed_response[:errors]
+    }
+  end
+
+  def build_error_message(response, proxmox_error, default_message)
+    parts = ["HTTP #{response.status}"]
+    add_message_part(parts, proxmox_error[:message])
+    add_errors_part(parts, proxmox_error[:errors])
+
+    parts.size > 1 ? parts.join(' - ') : build_fallback_message(response, default_message)
+  end
+
+  def add_message_part(parts, message)
+    parts << message if message && !message.empty?
+  end
+
+  def add_errors_part(parts, errors)
+    return unless errors
+
+    error_details = errors.map { |field, msg| "#{field}: #{msg}" }.join(', ')
+    parts << "(#{error_details})" unless error_details.empty?
+  end
+
+  def build_fallback_message(response, default_message)
+    "#{default_message} (HTTP #{response.status})"
   end
 
   def create_auth_ticket(options)
