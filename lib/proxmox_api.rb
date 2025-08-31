@@ -47,18 +47,102 @@ class ProxmoxAPI
     end
   end
 
-  # This exception is raised when Proxmox API returns error code
+  # Base exception class for Proxmox API errors
   #
   # @!attribute [r] response
   #   @return [Faraday::Response] answer from Proxmox server
-  class ApiException < RuntimeError
+  class Error < StandardError
     attr_reader :response
 
-    def initialize(response, description)
+    def initialize(response, message = nil)
       @response = response
-      super(description)
+      message ||= build_error_message(response)
+      super(message)
+    end
+
+    # Factory method to create appropriate error instance based on HTTP status code
+    #
+    # @param [Faraday::Response] response HTTP response from Proxmox server
+    # @param [String] message Optional custom error message
+    # @return [Error] Appropriate error subclass instance
+    def self.from_response(response, message = nil)
+      error_class = error_class_for_status(response.status)
+      error_class.new(response, message)
+    end
+
+    # @private
+    def self.error_class_for_status(status_code)
+      STATUS_ERROR_MAP.fetch(status_code) do
+        case status_code
+        when 400..499 then ClientError
+        when 500..599 then ServerError
+        else Error
+        end
+      end
+    end
+
+    private
+
+    def build_error_message(response)
+      return 'Unknown error' unless response
+
+      parts = ["HTTP #{response.status}"]
+
+      if response.body && !response.body.empty?
+        begin
+          parsed_response = JSON.parse(response.body, symbolize_names: true)
+          add_message_part(parts, parsed_response[:message])
+          add_errors_part(parts, parsed_response[:errors])
+        rescue JSON::ParserError
+          # Ignore JSON parsing errors and fall back to status code only
+        end
+      end
+
+      parts.size > 1 ? parts.join(' - ') : "HTTP #{response.status}"
+    end
+
+    def add_message_part(parts, message)
+      parts << message if message && !message.empty?
+    end
+
+    def add_errors_part(parts, errors)
+      return unless errors
+
+      error_details = errors.map { |field, msg| "#{field}: #{msg}" }.join(', ')
+      parts << "(#{error_details})" unless error_details.empty?
     end
   end
+
+  # Client error (4xx status codes)
+  class ClientError < Error; end
+
+  # Server error (5xx status codes)
+  class ServerError < Error; end
+
+  # Specific client errors
+  class BadRequest < ClientError; end
+  class Unauthorized < ClientError; end
+  class Forbidden < ClientError; end
+  class NotFound < ClientError; end
+  class UnprocessableEntity < ClientError; end
+
+  # Specific server errors
+  class InternalServerError < ServerError; end
+  class ServiceUnavailable < ServerError; end
+
+  # Backward compatibility alias
+  ApiException = Error
+
+  # Status code to error class mapping
+  STATUS_ERROR_MAP = {
+    400 => BadRequest,
+    401 => Unauthorized,
+    403 => Forbidden,
+    404 => NotFound,
+    422 => UnprocessableEntity,
+    500 => InternalServerError,
+    503 => ServiceUnavailable
+  }.freeze
 
   # Constructor method for ProxmoxAPI
   #
@@ -142,57 +226,10 @@ class ProxmoxAPI
     options[:headers].each { |k, v| faraday.headers[k] = v }
   end
 
-  def raise_on_failure(response, message = 'Proxmox API request failed')
+  def raise_on_failure(response, message = nil)
     return unless response.status >= 400
 
-    error_message = extract_error_message(response, message)
-    raise ApiException.new(response, error_message)
-  end
-
-  def extract_error_message(response, default_message)
-    return default_message if empty_response?(response)
-
-    proxmox_error = parse_proxmox_error(response)
-    return build_fallback_message(response, default_message) if proxmox_error.nil?
-
-    build_error_message(response, proxmox_error, default_message)
-  rescue JSON::ParserError
-    "#{default_message} (HTTP #{response.status})"
-  end
-
-  def empty_response?(response)
-    response.body.nil? || response.body.empty?
-  end
-
-  def parse_proxmox_error(response)
-    parsed_response = JSON.parse(response.body, symbolize_names: true)
-    {
-      message: parsed_response[:message],
-      errors: parsed_response[:errors]
-    }
-  end
-
-  def build_error_message(response, proxmox_error, default_message)
-    parts = ["HTTP #{response.status}"]
-    add_message_part(parts, proxmox_error[:message])
-    add_errors_part(parts, proxmox_error[:errors])
-
-    parts.size > 1 ? parts.join(' - ') : build_fallback_message(response, default_message)
-  end
-
-  def add_message_part(parts, message)
-    parts << message if message && !message.empty?
-  end
-
-  def add_errors_part(parts, errors)
-    return unless errors
-
-    error_details = errors.map { |field, msg| "#{field}: #{msg}" }.join(', ')
-    parts << "(#{error_details})" unless error_details.empty?
-  end
-
-  def build_fallback_message(response, default_message)
-    "#{default_message} (HTTP #{response.status})"
+    raise Error.from_response(response, message)
   end
 
   def create_auth_ticket(options)
