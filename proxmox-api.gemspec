@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |spec|
   spec.name                  = 'proxmox-api'
-  spec.version               = '2.1.0'
+  spec.version               = '2.1.1'
   spec.summary               = 'Proxmox VE REST API wrapper'
   spec.description           = 'Proxmox VE REST API wrapper'
   spec.authors               = ['Eugene Lapeko', 'Xavi Ablaza']
